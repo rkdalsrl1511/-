@@ -1,0 +1,117 @@
+---
+title: "데이터과학을 위한 통계 1장"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# 기초설정
+```{r}
+library(tidyverse)
+```
+
+
+# 1. 데이터 탐색하기
+```{r}
+state <- read_csv(file = "psds_data//state.csv")
+
+# 평균 / 절사평균 / 중간값
+mean(state[["Population"]])
+mean(state[["Population"]], trim=0.1)
+median(state[["Population"]])
+
+# 가중평균, 가중 중간값
+library(matrixStats)
+weighted.mean(state[["Murder.Rate"]], w = state[["Population"]])
+weightedMedian(state[["Murder.Rate"]], w = state[["Population"]])
+
+# 표준편차, 사분위범위, 중위절대편차
+sd(state[["Population"]])
+IQR(state[["Population"]])
+mad(state[["Population"]])
+
+# 백분위수 확인하기
+quantile(state[["Population"]], p = c(.05, .25, .5, .75, .95))
+boxplot(state[["Population"]]/1000000, ylab="Population(millions)")
+
+# 도수분포표 확인하기
+breaks <- seq(from = min(state[["Population"]]), 
+              to = max(state[["Population"]]),
+              length = 11)
+
+pop_freq <- cut(state[["Population"]], breaks = breaks,
+                right = TRUE, include.lowest = TRUE)
+
+table(pop_freq)
+
+# 히스토그램으로 확인하기
+hist(state[["Population"]], breaks = breaks)
+
+# 밀도추정
+hist(state$Murder.Rate, freq = FALSE)
+lines(density(state$Murder.Rate), lwd=3, col="blue")
+```
+
+
+# 2. 상관관계 및 두 개 이상의 변수 탐색하기
+```{r}
+# 산점도 그려보기
+plot(state$Population, state$Murder.Rate, xlab = "population", ylab = "murder.rate")
+
+# kc_tax 데이터
+kc_tax <- read_csv(file = "psds_data//kc_tax.csv")
+
+# subset을 이용하여 필요한 부분만 남김.
+kc_tax0 <- subset(kc_tax, TaxAssessedValue < 750000 & SqFtTotLiving > 100 &
+                    SqFtTotLiving < 3500)
+
+# 길이 확인하기
+nrow(kc_tax0)
+
+# 육각형 그림 : 수치형 - 수치형
+ggplot(kc_tax0, mapping = aes(x = SqFtTotLiving, y = TaxAssessedValue)) +
+  stat_binhex(colour = "white") +
+  theme_bw() +
+  scale_fill_gradient(low = "white", high = "black") +
+  labs(x = "finished square feet", y = "tax assessed value")
+
+# 등고선 그림 : 수치형 - 수치형
+ggplot(kc_tax0, mapping = aes(x = SqFtTotLiving, y = TaxAssessedValue)) +
+  theme_bw() +
+  geom_point(alpha = 0.1) +
+  geom_density2d(colour="white") + 
+  labs(x = "finished square feet", y = "tax assessed value")
+
+# 분할표 : 범주형 - 범주형
+library(descr)
+lc_loans <- read_csv(file = "psds_data//lc_loans.csv")
+
+x_tab <- CrossTable(lc_loans$grade, lc_loans$status,
+                    prop.c = FALSE, prop.chisq = FALSE, prop.t = FALSE)
+
+
+x_tab # 분할표 출력... 오 신기하다.
+
+# 상자그림 : 범주형 - 수치형
+boxplot(state[["Population"]]/1000000, ylab="Population(millions)")
+
+# 바이올린 도표 : 범주형 - 수치형
+airline_stats <- read_csv(file = "psds_data//airline_stats.csv")
+ggplot(data = airline_stats, mapping = aes(x = airline, y = pct_carrier_delay)) +
+  ylim(0, 50) +
+  geom_violin() +
+  labs(x = "", y = "daily % of delayed Flights")
+
+# 다변수 시각화
+# 조건화 변수 facet을 활용하여 여러 변수를 비교하는 용도.
+ggplot(subset(kc_tax0, ZipCode %in% c(98188, 98105, 98108, 98126)), 
+       mapping = aes(x = SqFtTotLiving, y = TaxAssessedValue)) +
+  stat_binhex(colour = "white") +
+  theme_bw() +
+  scale_fill_gradient(low = "white", high = "black") +
+  labs(x = "finished square feet", y = "tax assessed value") +
+  facet_wrap("ZipCode")
+```
