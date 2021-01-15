@@ -1,0 +1,33 @@
+---
+title: "데이터과학을 위한 통계 2장"
+output: rmarkdown::github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 기초설정
+```{r}
+library(tidyverse)
+```
+
+# 1. 
+```{r}
+rep(1:1000, rep(5, 1000))
+rep(5, 1000)
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
