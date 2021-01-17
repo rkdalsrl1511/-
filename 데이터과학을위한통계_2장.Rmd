@@ -12,22 +12,66 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 ```
 
-# 1. 
+# 1. 부트스트랩
 ```{r}
-rep(1:1000, rep(5, 1000))
-rep(5, 1000)
+# rep 함수
+head(rep(1:1000, rep(5, 1000)), n = 50) # 1~1000까지의 각 숫자를 5번씩 반복해서 총 5000번 반복
+head(rep(5, 1000), n = 50) # 5를 1000번 반복
 
+# 부트스트랩 표본 추출 : 복원 추출 후, 통계량과 모델을 다시 계산
+library(boot)
+loans_income <- read_csv(file = "C:\\Users\\rkdal\\OneDrive\\바탕 화면\\월간R프로젝트\\데이터과학을위한통계\\psds_data\\loans_income.csv")
 
+stat_fun <- function(x, idx) median(x[idx])
+
+# 인덱스 idx로 지정된 표본의 중앙값을 계산한다.
+boot_obj <- boot(loans_income$x, R=1000, statistic=stat_fun)
+summary(boot_obj$t)
 ```
 
 
+부트스트랩의 경우 표본크기가 작은 것을 보완하기 위한 것이 아니다. 새 데이터를 만드는 것도 아니며, 기존 데이터 집합의 빈 곳을 채우는 것도 아니다. 모집단에서 추가적으로 표본을 뽑는다고 할 때, 그 표본이 얼마나 원래 표본과 비슷할지를 알려줄 뿐이다.
 
 
+# 2. 표본정규분포와 QQ그림
+
+**QQ그림**은 표본이 정규분포에 얼마나 가까운지를 시각적으로 판별하는 데 사용한다. Z 점수를 오름차순으로 정렬하고 각 값의 Z 점수를 y축에 표시한다. x축은 정규분포에서의 해당 분위수를 나타낸다.
+
+점들이 대각선에 가깝게 따라갈수록 표본분포가 정규분포에 가까운 것이다.
+
+```{r}
+norm_samp <- rnorm(100)
+qqnorm(norm_samp)
+abline(a=0, b=1, col="grey")
+```
 
 
+# 3. 긴 꼬리 분포
+```{r}
+sp500_data <- read_csv(file = "C:\\Users\\rkdal\\OneDrive\\바탕 화면\\월간R프로젝트\\데이터과학을위한통계\\psds_data\\sp500_data.csv")
+
+nflx <- sp500_data$NFLX
+nflx <- diff(log(nflx[nflx>0]))
+qqnorm(nflx)
+abline(a=0, b=1, col="grey")
+```
 
 
+# 4. 이항분포
+```{r}
+# dbinom 함수는 이항 확률을 계산할 때 사용한다.
+dbinom(x=2, size=5, prob=0.1)
+
+# 누적 이항분포 : 2번 이하의 성공을 관찰할 확률
+pbinom(2, 5, 0.1)
+```
 
 
+# 5. 푸아송 분포, 그외 분포
+```{r}
+# 포아송분포를 따르는 난수 생성
+rpois(100, lambda = 2)
 
-
+# 지수분포를 따르는 난수 생성
+rexp(n=100, rate=.2)
+```
