@@ -107,7 +107,40 @@ summary(aov(Time ~ Page, data = four_sessions))
 재표집된 분산이 관찰된 변화를 초과한 경우가 p값이 됨.
 
 
+# 5. 카이제곱검정
+
+주로 독립성 검정, 교차분석 등에서 사용
+
+피어슨 잔차 = (관측값 = 기댓값) / sqrt(기댓값)
+
+카이제곱 통계량은 이 피어슨 잔차들의 제곱합이다.
+
+이 관련 내용들은 기초 통계와 사회조사분석사 책을 다시 보면 좋을 것 같음.
+
+```{r}
+click_rates <- read_csv(file = "C:\\Users\\rkdal\\OneDrive\\바탕 화면\\월간R프로젝트\\데이터과학을위한통계\\psds_data\\click_rates.csv")
+
+click_rates <- as.data.frame(click_rates)
+
+# 카이제곱 검정 / 책이랑 동일하게 검정하려면 데이터를 바꿔야함.
+chisq.test(click_rates$Rate[c(1,3,5)], simulate.p.value = TRUE)
+
+# 피어슨 잔차
+click_rates$Rate[c(1,3,5)] <- (click_rates$Rate[c(1,3,5)]-mean(click_rates$Rate[c(1,3,5)])) / sqrt(mean(click_rates$Rate[c(1,3,5)]))
+
+click_rates$Rate[c(2,4,6)] <- (click_rates$Rate[c(2,4,6)]-mean(click_rates$Rate[c(2,4,6)])) / sqrt(mean(click_rates$Rate[c(2,4,6)]))
+```
+
+피셔의 정확검정은, fisher.test()로 검정
+
+해당 검정은 모든 조합(순열)을 실제로 열거하고, 빈도를 집계하고, 관찰된 결과가 얼마나 극단적으로 발생할 수 있는지를 정확하게 결정하는 절차를 제공한다.
 
 
+# 6. 검정력과 표본크기
 
+검정력 혹은 필요한 표본크기의 계산과 관련한 4가지 중요한 요소들이 있다.
 
+- 표본크기
+- 탐지하고자 하는 효과크기
+- 가설검정을 위한 유의수준
+- 검정력

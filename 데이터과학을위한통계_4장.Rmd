@@ -1,0 +1,156 @@
+---
+title: "데이터과학을 위한 통계 4장"
+output: rmarkdown::github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# 기초설정
+```{r}
+library(tidyverse)
+```
+
+
+# 1. 단순선형회귀
+
+```{r}
+lung <- read_csv(file = "C:\\Users\\rkdal\\OneDrive\\바탕 화면\\월간R프로젝트\\데이터과학을위한통계\\psds_data\\LungDisease.csv")
+
+# pefr : 폐활량, exposure : 면진 노출 연수
+str(lung)
+
+# 모델 적합 후 확인
+ex_model1 <- lm(PEFR ~ ., data=lung)
+summary(ex_model1)
+
+# 적합값
+ex_fitted <- predict(ex_model1)
+
+# 잔차
+resid <- residuals(ex_model1)
+
+lung$pred <- ex_fitted
+
+ggplot(data = lung) +
+  geom_histogram(mapping = aes(x = PEFR),
+                 fill = "green") +
+  geom_histogram(mapping = aes(x = pred),
+                 fill = "blue")
+```
+
+
+# 2. 다중선형회귀
+
+생략
+
+# 3. 회귀에서의 요인변수
+
+그냥 간편하게 diamonds 데이터를 사용하겠다.
+
+요인변수는 범주형 변수이다. 더미변수로 만들어서 활용한다.
+
+```{r}
+# diamonds 기본 토이데이터
+ex_data <- diamonds
+
+# 데이터 구조 파악하기
+# 범주형 : cut, color, clarity
+str(ex_data)
+
+# 이진변수 만들기(원-핫 인코딩)
+clarity_dummy <- model.matrix(~clarity-1, data=ex_data)
+str(clarity_dummy)
+head(clarity_dummy)
+
+ex_lm <- lm(price ~ carat + depth + table + x + y + z, data = ex_data)
+
+# 모델의 잔차를 사용하여 범주형 변수 축소하기
+# 각 clarity에 대한 잔차의 중간값을 계산하고 ntile 함수를 사용해 중간값으로 정렬한 clarity를 3개의 그룹으로 분할한다.
+ex_group <- ex_data %>% 
+  mutate(resid = residuals(ex_lm)) %>%
+  group_by(clarity) %>% 
+  summarise(med_resid = median(resid),
+            cnt = n()) %>% 
+  arrange(med_resid) %>% 
+  mutate(cum_cnt = cumsum(cnt),
+         clarity_group = ntile(cum_cnt, 3))
+```
+
+순서가 있는 범주형 범수의 경우, 수치형 변수로 처리하기도 한다. 그냥 범주형 변수로 다루면 잃어버릴 수 있는 정보를 유지하기 위함이다.
+
+
+# 4. 회귀식 해석
+
+```{r}
+# 요약 정보
+summary(ex_lm)
+
+# 회귀계수 정보
+ex_lm$coefficients
+
+# update를 활용하여 변수를 추가하거나 제외하여 평가하기
+update(ex_lm, . ~ . -z)
+
+# 표준화잔차(잔차/표준오차)
+sresid <- rstandard(ex_lm)
+
+# order함수를 사용하여 가장 작은 잔차의 위치 확인. 특이값 탐색에 유용하다.
+idx <- order(sresid)
+sresid[idx[1]]
+```
+
+
+회귀모형에서 제외됐을 때 모델에 중요한 변화를 가져오는 값을 주영향관측값이라고 한다.
+
+회귀식에 한 레코드가 미치는 영향력의 정도를 레버리지라 하는데, 일반적으로 레버리지를 측정하는 척도는 햇 값이다. 또 다른 지표로는 쿡의 거리가 있다. 레버리지와 잔차의 크기를 합쳐서 영향력을 판단한다.
+
+햇 값이 2(P+1)/n 이상의 값들은 레버리지가 높은 데이터 값을 나타낸다.
+
+쿡의 거리는 4/(n-P-1)보다 크면 영향력이 높다고 보는 편이다.
+
+```{r}
+# 영향력 그림
+std_resid <- rstandard(ex_lm)
+cooks_d <- cooks.distance(ex_lm)
+hat_values <- hatvalues(ex_lm)
+plot(hat_values, std_resid, cex=10*sqrt(cooks_d))
+```
+
+# 5. 다항회귀와 스플라인 회귀
+
+다항회귀 : 회귀모형에 다항식(제곱, 세제곱 등) 항을 추가한 방식이다. 
+
+스플라인 회귀 : 다항 구간들을 부드러운 곡선 형태로 피팅한다.
+
+매듭 : 스플라인 구간을 구분하는 값들.
+
+일반화가법모형(gam) : 자동으로 구간을 결정하는 스플라인 모델.
+
+비선형회귀 모델은 수치 최적화가 필요하기 때문에 피팅하기가 어렵고, 더 많은 계산을 필요로 한다. 이러한 이유로 가능하면 선형모형을 이용하는 것이 일반적이다.
+
+
+```{r}
+# 다항회귀 : poly함수 이용할 것(carat을 2차항으로)
+ex_lm2 <- lm(price ~ poly(carat, 2) + depth + table + x + y + z, data = ex_data)
+summary(ex_lm2)
+
+# 스플라인 : 점들 사이를 부드럽게 보간
+library(splines)
+
+# 3차 스플라인(매듭 : .25, .5, .75 사분위)
+knots <- quantile(ex_data$carat, p=c(.25, .5, .75))
+lm_spline <- lm(price ~ bs(carat, knots = knots, degree = 3) + depth + table + x + y + z, data = ex_data)
+
+summary(lm_spline)
+
+# 일반화 가법 모형 : 스플라인 회귀를 자동으로 찾는 기술
+library(mgcv)
+lm_gam <- gam(price ~ s(carat) + depth + table + x + y + z, data = ex_data)
+summary(lm_gam)
+```
+
+
+자세한 내용은 알아서 구글링해보기. 여기서는 이런 것도 있구나. 하는 식으로 넘어가기.
