@@ -1,0 +1,215 @@
+---
+title: "데이터과학을 위한 통계 5장"
+output: rmarkdown::github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 기초설정
+```{r}
+library(tidyverse)
+```
+
+이젠 데이터셋 불러오기도 귀찮아서 그냥 기본 데이터셋을 쓰려고 한다.
+
+#### 일반적인 이진 분류 접근 방식
+
+- 어떤 레코드가 속할 거라고 생각되는 관심 클래스에 대한 **컷오프 확률**을 정한다.
+- 레코드가 관심 클래스에 속할 확률을 추정한다.
+- 그 확률이 컷오프 확률 이상이면 관심 클래스에 해당 레코드를 할당한다.
+
+
+## 1. 나이브 베이즈
+
+베이지언 통계의 방법으로 간주되지 않는다. 주로 데이터 중심의 경험적 방법이다.
+
+베이즈 규칙과 비슷한 계산이 들어가기 때문에 이름이 붙었다.
+
+
+```{r}
+loan <- read_csv(file = "C:\\Users\\rkdal\\OneDrive\\바탕 화면\\월간R프로젝트\\데이터과학을위한통계\\psds_data\\loan_data.csv")
+
+# 데이터 간단 편집
+loan <- as.data.frame(loan)
+
+for (i in 1:ncol(loan)) {
+  
+  if (is.character(loan[, i])) {
+    
+    loan[, i] <- as.factor(loan[, i])
+    
+  }
+  
+}
+
+# 구조확인
+str(loan)
+
+# 나이브 베이즈 모델
+library(klaR)
+naive_model <- NaiveBayes(outcome ~ purpose_ + home_ + emp_len_,
+                          data = na.omit(loan))
+
+naive_model$tables
+```
+
+
+모델로부터 나온 결과는 각각 조건부확률이다.
+
+모델을 통해 새로운 대출에 대한 결과를 예측할 수 있다.
+
+확률의 비편향된 추정치를 굳이 구할 필요가 없다면, 나이브 베이즈도 나름 우수한 결과를 보인다.
+
+
+**수치형 변수**를 예측하기 위해서는, 두 가지 접근법 중 하나를 고려한다.
+
+- 수치형 예측변수를 비닝(binning)하여 범주형으로 변환 후, 알고리즘을 적용
+- 조건부 확률을 추정하기 위해 정규분포 같은 확률모형을 사용.
+
+
+```{r}
+# 나이브 베이즈 모델을 통한 예측
+predict(naive_model, loan[1:10, c("purpose_", "home_", "emp_len_")])
+```
+
+
+## 2. 판별분석
+
+초창기 통계 분류 방법이다. 선형판별분석(LDA)가 일반적으로 사용된다. 트리 모델이나 로지스틱 회귀와 같은 더 정교한 기법이 출현한 후 많이 사용하지 않는다.
+
+하지만 주성분분석과 같이, 아직도 많이 사용되는 방법들과 연결된다. 예측변수들의 중요성을 측정하거나 효과적으로 특징을 선택하는 방법 등으로도 사용될 수 있다.
+
+
+자세한 원리는 책 및 구글링 참고
+
+
+```{r}
+library(MASS)
+
+# 두 변수로 판별분석 적용
+loan_lda <- lda(outcome ~ borrower_score + payment_inc_ratio,
+                data = loan)
+
+# 선형판별자 가중치
+loan_lda$scaling
+
+# 예측치
+pred <- predict(loan_lda)
+head(pred$posterior)
+```
+
+
+## 3. 로지스틱 회귀
+
+로지스틱 회귀는 선형회귀를 확장한 **일반화선형모형(GLM)의 특별한 사례**이다.
+
+로지스틱 회귀에서는 최대우도추정법(MLE)을 사용하여 모델을 피팅한다. 
+
+R에서 로지스틱 회귀를 구하려면 family 인수를 binomial로 지정하고 glm 함수를 사용한다.
+
+```{r}
+# glm 함수를 이용하여 로지스틱 회귀 모형 만들기
+logistic_model1 <- glm(outcome ~ payment_inc_ratio + purpose_ + home_ + emp_len_ + borrower_score, family = "binomial", data = loan)
+
+summary(logistic_model1)
+
+# 예측값 확인 
+pred <- predict(logistic_model1)
+summary(pred)
+
+# 예측값을 확률로 변환하기
+prob <- 1/(1+exp(-pred))
+summary(prob)
+```
+
+
+p값을 해석할 때, 통계적인 유의성을 측정하는 지표로 보기보다는 변수의 중요성을 나타내는 상대적인 지표로 봐야 한다. p값이 낮을수록 예측변수는 더욱 유의미하다.
+
+또한, 선형회귀와 마찬가지로 단계적 회귀, 상호작용 항 도입, 스플라인 항 포함 등을 모두 사용할 수 있다.
+
+```{r}
+library(mgcv)
+
+# 일반화기법모형을 이용한 로지스틱 회귀
+logistic_model2 <- gam(outcome ~ s(payment_inc_ratio) + purpose_ + home_ + emp_len_ + s(borrower_score), family = "binomial", data = loan)
+```
+
+
+로지스틱 회귀가 선형회귀와 다른 부분은 잔차에 대한 분석에 관한 내용이다.
+
+
+```{r}
+terms <- predict(logistic_model2, type = "terms")
+
+# 편잔차
+partial_resid <- resid(logistic_model2) + terms
+
+df <- data.frame(payment_inc_ratio = loan$payment_inc_ratio,
+                 terms = terms[, "s(payment_inc_ratio)"],
+                 partial_resid = partial_resid[, "s(payment_inc_ratio)"])
+
+ggplot(df, aes(x=payment_inc_ratio, y=partial_resid, solid = FALSE)) +
+  geom_point(shape=46, alpha =.4) +
+  geom_line(aes(x=payment_inc_ratio, y=terms),
+            color = "red", alpha =.5, size=1.5) +
+  labs(y="Partial Residual")
+```
+
+
+위의 그래프에서 위쪽 구름은 1의 응답(연체)을 의미하고, 아래쪽 구름은 0의 응답(대출 상환)을 의미한다. 로지스틱 회귀에서 얻은 잔차는 보통 이러한 형태를 띄게 된다. 편잔차는 비선형성을 검증하고 영향력이 큰 레코드들을 확인하는 데 여전히 유용하다.
+
+
+## 4. 분류모형 평가하기
+
+여기서는 코드 구현을 생략한다.
+
+### (1) 혼동행렬
+
+분류 결과를 나타내는 가장 대표적인 행렬이다. R에서 여러 가지 패키지를 사용하여 혼동행렬을 구할 수 있다. 혼동행렬을 통해 정밀도, 민감도, 특이도 등의 지표들을 확인할 수 있다.
+
+### (2) ROC 곡선
+
+민감도와 특이도 사이의 관계를 나타낸 곡선이다. 
+
+### (3) AUC
+
+ROC 곡선의 아래 면적 지표이다. 1에 가까울수록 정확한 분류기임을 나타낸다.
+
+### (4) 리프트
+
+리프트 곡선을 활용한다면, 최적의 컷오프 탐색에 활용할 수 있다. 리프트 곡선은 레코드를 1로 분류하기 위한 확률 컷오프 값에 따른 결과의 변화를 한눈에 볼 수 있게 해준다.
+
+
+## 5. 불균형 데이터 다루기
+
+### (1) 과소표본추출
+
+다운 샘플링을 통해서 0과 1의 데이터 개수에 균형을 맞춘다. 작지만 더 균형 잡힌 데이터는 모델 성능에 좋은 영향을 주게되고, 데이터를 준비하는 과정이나 모델을 검증하는 과정이 좀 더 수월하게 된다.
+
+
+### (2) 과잉표본추출과 상향/하향 가중치
+
+다수 클래스를 과소표본추출하는 대신, 복원추출 방식(부트스트래핑)으로 희귀 클래스의 데이터를 과잉표본추출(업샘플링)해야 한다.
+
+데이터에 가중치를 적용하는 방식도 이와 유사한 효과를 얻을 수 있다. 많은 분류 알고리즘에서 상향/하향 가중치를 데이터에 적용하기 위해 weight라는 인수를 지원한다.
+
+```{r}
+# 연체에 대한 가중치 1/p로 두기. 상환에 대한 가중치는 1
+wt <- ifelse(loan$outcome=="default",
+             1/mean(loan$outcome == "default"), 1)
+
+# 가중치 적용 모델
+logistic_model3 <- gam(outcome ~ s(payment_inc_ratio) + purpose_ + home_ + emp_len_ + s(borrower_score), family = "binomial", data = loan, weights = wt)
+```
+
+
+가중치를 적용하는 방식이 업샘플링, 다운샘플링하는 방법을 대체할 수 있다.
+
+분류 알고리즘의 손실 함수를 직접ㅈ넉으로 수정하는 것은 복잡하고 어렵지만, 가중치가 높은 데이터를 선호하고 가중치가 낮은 데이터의 오류를 줄여주는 것은 손실 함수를 변경하는 쉬운 방법이다.
+
+
+### (3) 데이터 생성
+
+합성 소수 과잉표본 기법 SMOTE 알고리즘은 원래 레코드와 이웃 레코드의 랜덤 가중평균으로 새로운 합성 레코드를 만든다. knn 패키지를 이용하여 R로 직접 구현 가능하다.
