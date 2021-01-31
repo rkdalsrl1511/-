@@ -159,3 +159,69 @@ summary(loan_tree)
 - 일종의 규칙들의 집합이라고 볼 수 있기 때문에, 비전문가들과 대화하는데 효과적이다.
 
 
+## 3. 배깅과 랜덤 포레스트
+
+단일 모델을 엄청나게 많이 만들어놓고, 다수결 투표 혹은 다중 모델의 평균을 내는 방식으로 최종 모델을 결정하는 것이 **앙상블 모델**이다.
+
+**배깅**과 **부스팅**은 앙상블 모델을 만드는 방법이다. 
+
+배깅은 다양한 모델들을 정확히 같은 데이터에 대해 구하는 대신, 매번 부트스트랩 재표본에 대해 새로운 모델을 만든다.
+
+랜덤 포레스트는 배깅 방법을 적용한 모델이다. 
+
+```{r}
+library(randomForest)
+
+loan3000 <- read_csv(file = "C:\\Users\\rkdal\\OneDrive\\바탕 화면\\월간R프로젝트\\데이터과학을위한통계\\psds_data\\loan3000.csv")
+
+loan3000 <- as.data.frame(loan3000)
+
+# 문자형을 수치로 변환
+loan3000$outcome <- ifelse(loan3000$outcome == "paid off",
+                           1, 0)
+
+# 범주형 자료로 변환
+loan3000$outcome <- as.factor(loan3000$outcome)
+
+# 랜덤 포레스트 모델
+rf <- randomForest(outcome ~ borrower_score + payment_inc_ratio,
+                   data = loan3000)
+
+# 예측
+pred <- predict(rf)
+summary(pred)
+```
+
+랜덤포레스트는 블랙박스 모델이다. 직관적인 해석은 불가능하다. 또한 오버피팅의 위험성이 다소 높다고 볼 수 있다.
+
+```{r}
+# 랜덤포레스트를 통한 변수 중요도 찾기
+rf_all <- randomForest(outcome ~.,
+                       data = loan3000,
+                       importance = TRUE)
+
+rf_all$importance
+
+varImpPlot(rf_all, type=1)
+varImpPlot(rf_all, type=2)
+```
+
+해당 변수가 예측에 미치는 영향력이 제거 되었을 때, 감소하는 정확도와 지니 불순도 점수의 감소량을 측정한다.
+
+#### 하이퍼 파라미터
+
+다른 딥러닝/머신러닝 알고리즘들과 마찬가지로, 랜덤 포레스트는 성능을 조절할 수 있는 손잡이가 달려있다.
+
+이러한 손잡이를 **하이퍼파라미터**라고 부른다. 
+
+- nodesize : 말단 노드의 크기를 의미한다. 분류를 위한 기본 설정은 1이며, 회귀 문제에서는 5이다.
+- maxnodes : 각 결정 트리에서 전체 노드의 최대 개수를 의미한다. 기본적인 제한이 없고, 다만 nodesize 제한 설정에 따라 가장 큰 트리의 크기가 결정된다.
+
+nodesize와 maxnodes를 크게 하면 더 작은 트리를 얻게되고, 오버피팅을 피할 수 있게 된다.
+
+
+
+
+
+
+
