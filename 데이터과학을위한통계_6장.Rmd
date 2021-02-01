@@ -220,8 +220,159 @@ varImpPlot(rf_all, type=2)
 nodesize와 maxnodes를 크게 하면 더 작은 트리를 얻게되고, 오버피팅을 피할 수 있게 된다.
 
 
+## 4. 부스팅
+
+배깅은 상대적으로 튜닝이 거의 필요 없지만, 문제에 따라서 상당한 튜닝이 필요할 수도 있다.
+
+- **에이다부스트** : 잔차에 따라 데이터의 가중치를 조절하는 부스팅의 초기 버전
+- **그레이디언트 부스팅** : 비용함수를 최소화하는 방향으로 부스팅을 활용하는 좀 더 일반적인 형태
+- **확률적 그레이디언트 부스팅** : 각 라운드마다 레코드와 열을 재표본추출하는 것을 포함하는 부스팅의 가장 일반적인 형태
+
+부스팅 방식에는 이미 재표본추출이라는 개념이 있어서 전처리를 한 데이터를 추가로 더 보강할 필요가 있을까? 파라미터를 조정하면 되는 것 아닌가?
+
+에이다부스트의 원리를 간단히 알아보면 다음과 같다.
+
+- 피팅할 모델의 개수 M을 설정한다. 
+- 반복 횟수 및 관측 가중치를 초기화한다.
+- 관측 가중치를 이용하여 모델을 학습시킨다.
+- 잘못 분류된 입력 데이터에 대한 가중치를 증가하는 방향으로 가중치를 업데이터한다.
+- 반복한다.
 
 
+#### XG부스트
+
+확률적 그레이디언트 부스팅을 구현한 이 소프트웨어는 워싱턴 대학교에서 개발되었다.
+
+xgboost 함수는 우리가 직접 조정할 수 있는 다양한 파라미터들을 제공한다. 이 중 가장 중요한 파라미터 두 가지는 **subsample**과 **eta**라고 할 수 있다.
+
+- subsample : 각 반복 구간마다 샘플링할 입력 데이터의 비율을 조정한다.
+- eta(학습률) : 부스팅 알고리즘에서 a에 적용되는 축소 비율을 결정한다.
+
+eta는 가중치 변화량을 낮추어 오버피팅을 방지하는 효과가 있다. 가중치를 조금씩 변화시키는 것은 알고리즘이 학습 데이터에 오버피팅될 수 있는 가능성을 줄여준다.
+
+```{r}
+library(xgboost)
+
+# 이런 편리한 함수가 있는지 몰랐다.
+predictors <- data.matrix(loan3000[, c("borrower_score", "payment_inc_ratio")])
+
+loan3000$outcome <- as.factor(loan3000$outcome)
+
+# 목표변수를 라벨링해야함.
+label <- as.numeric(loan3000[,"outcome"])-1
+
+xgb <- xgboost(data=predictors,
+               label = label,
+               objective = "binary:logistic",
+               params = list(subsample = .63, eta=0.1), nrounds = 100)
+
+pred <- predict(xgb, newdata = predictors)
+xgb_df <- cbind(loan3000, pred_default = pred>.5, prob_default=pred)
+
+# 결과 그래프 출력
+ggplot(data=xgb_df, aes(x=borrower_score, y=payment_inc_ratio, color=pred_default, shape=pred_default)) +
+  geom_point(alpha=.6, size=2)
+```
+
+xgboost는 수식이 포함된 문법을 지원하지 않기 때문에 예측변수는 data.matrix 형태로, 예측변수는 0/1 형태로 변형해서 사용해야 한다.
+
+#### 정규화 : 오버피팅 피하기
+
+```{r}
+loan_data <- read_csv(file = "C:\\Users\\rkdal\\OneDrive\\바탕 화면\\월간R프로젝트\\데이터과학을위한통계\\psds_data\\loan_data.csv")
+
+loan_data$X1 <- NULL
+
+predictors <- data.matrix(loan_data[, -which(names(loan_data) %in% "outcome")])
+
+loan_data$outcome <- as.factor(loan_data$outcome)
+
+label <- as.numeric(loan_data$outcome)-1
+
+test_idx <- sample(nrow(loan_data), 10000)
+
+xgb_default <- xgboost(data=predictors[-test_idx, ],
+                       label = label[-test_idx],
+                       objective = "binary:logistic",
+                       nrounds = 250)
+
+pred_default <- predict(xgb_default, predictors[test_idx, ])
+
+error_default <- abs(label[test_idx] - pred_default) > 0.5
+
+xgb_default$evaluation_log[250, ]
+
+mean(error_default)
+```
+
+**정규화**를 이용하여 오버피팅을 방지할 수 있다. 이는 모델의 복잡도에 따라 벌점을 추가하는 형태로 비용함수를 변경하는 방법이다.
+
+정규화를 위해서 **alpha**와 **lambda** 두 파라미터가 존재한다. 각각 맨하탄 거리와 유클리드 거리를 의미한다. 이 파라미터들을 크게 하면, 모델이 복잡해질수록 더 많은 벌점을 부여하게 되고 결과적으로 얻어지는 트리의 크기가 작아지게 된다.
+
+**params** 인자의 **list 목록**에 alpha나 lambda값을 추가하면 된다.
+
+predict 함수는 좀 더 편리한 **ntreelimit** 파라미터를 제공한다. 이는 예측을 위해 첫 i개의 트리 모델만을 사용하는 것을 가능하게 한다.
+
+이를 통해 예측을 위해 사용하는 모델의 개수에 따른 표본 내 오차율과 표본 밖 오차율을 더 쉽게 비교할 수 있다.
+
+```{r}
+# ntreelimit
+pred_def <- predict(xgb_default, predictors[test_idx, ], ntreelimit = 10)
+
+# evaluation_log : 학습데이터에 대한 오차 확인. 꾸준히 좋아지는 정도를 확인 가능하다.
+head(xgb_default$evaluation_log)
+```
+
+반복문을 사용하여, 모델 개수에 따른 오차율 등을 그래프로 나타낼 수 있을 것이다. 여기서는 생략한다.
+
+#### 능형(릿지) 회귀와 라소 회귀
+
+능형회귀의 경우 잔차제곱합에 회귀계수의 개수와 크기에 따라 벌점(유클리드 거리)을 추가한 값을 최소화시킨다.
+
+라소회귀 역시 벌점 항에 유클리드 거리 대신 맨하탄 거리를 추가하여 최소제곱법을 이용한다.
+
+이러한 능형회귀, 라소회귀의 개념을 xgboost의 lambda와 alpha가 동일하게 사용한다.
 
 
+#### 하이퍼파라미터와 교차 타당성
+
+설정해야 하는 파라미터 수가 많아진다면 어떤 기준을 가지고 이 파라미터들을 골라야 할까? 
+
+이에 대한 해답으로 **교차타당성감사**를 활용할 수 있을 것이다.
+
+데이터를 K개의 서로 다룬 그룹(폴드)으로 랜덤하게 나눈다. 각 폴드마다 해당 폴드에 속한 데이터를 제외한 나머지 데이터를 가지고 모델을 학습한 후, 폴드에 속한 데이터를 이용해 모델을 평가한다.
+
+이는 결국 표본 밖 데이터에 대한 모델의 성능을 보여준다. 설정한 하이퍼파라미터 조합마다 폴드에 대한 오차의 평균을 계산해서 전체적으로 가장 낮은 평균 오차를 갖는 최적의 하이퍼파라미터 조합을 찾는다.
+
+eta와 max_depth(기본값 6. 트리의 최대 깊이)를 최적화시켜보자.
+
+```{r}
+N <- nrow(loan_data)
+fold_number <- sample(1:5, N, replace = TRUE)
+params <- data.frame(eta=rep(c(.1, .5, .9), 3),
+                     max_depth=rep(c(3,6,12), rep(3,3)))
+
+# 5개 폴드 오차 계산
+error <- matrix(0, nrow = 9, ncol = 5)
+for (i in 1:nrow(params)) {
+  
+  for (k in 1:5) {
+    
+    fold_idx <- (1:N)[fold_number == k]
+    xgb <- xgboost(data=predictors[-fold_idx, ], 
+                   label = label[-fold_idx], 
+                   params = list(eta = params[i, "eta"],
+                                 max_depth = params[i, "max_depth"]),
+                   objective = "binary:logistic",
+                   nrounds = 100,
+                   verbose = 0)
+    
+    pred <- predict(xgb, predictors[fold_idx, ])
+    error[i, k] <- mean(abs(label[fold_idx] - pred) >= 0.5)
+    
+    
+  }
+  
+}
+```
 
